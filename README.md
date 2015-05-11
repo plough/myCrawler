@@ -6,3 +6,6 @@
 
 ## getWebpage
 保存指定URL的页面到本地。
+
+## qiushibaike
+爬取糗事百科的内容，输出到命令行。主要参考http://cuiqingcai.com/990.html ，略作修改。
