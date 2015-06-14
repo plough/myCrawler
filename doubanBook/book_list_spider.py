@@ -40,9 +40,8 @@ def book_spider(book_tag):
         pub_info = '出版信息： ' + '/'.join(desc_list[-3:])
         rating = book_info.find('span', {
             'class':'rating_nums'}).string.strip()
-        people_num = book_info.findAll('span')[2].string.strip()
-        file_content += "*%d\t《%s》\t评分：%s\t%s\n\t%s\n\t%s\n\n" % (
-                count, title, rating, people_num, author_info, pub_info)
+        file_content += "*%d\t《%s》\t评分：%s\n\t%s\n\t%s\n\n" % (
+                count, title, rating, author_info, pub_info)
         count += 1
 
 
