@@ -1,11 +1,9 @@
 #!/usr/bin/ python
 # encoding: utf-8
 
-import urllib
 import urllib2
+import requests
 import re
-import thread
-import time
 
 #糗事百科爬虫类
 class QSBK:
@@ -20,18 +18,9 @@ class QSBK:
         self.enable = False
     #传入某一页的索引获得页面代码
     def getPage(self, pageIndex):
-        try:
-            url = 'http://www.qiushibaike.com/hot/page/' + str(pageIndex)
-            request = urllib2.Request(url, headers = self.headers)
-            response = urllib2.urlopen(request)
-            #将页面转化为UTF-8编码
-            pageCode = response.read().decode('utf-8')
-            return pageCode
-
-        except urllib2.URLError, e:
-            if hasattr(e, "reason"):
-                print u"连接糗事百科失败，错误原因", e.reason
-                return None
+        url = 'http://www.qiushibaike.com/hot/page/' + str(pageIndex)
+        pageCode = requests.get(url, headers = self.headers).text
+        return pageCode
 
     #传入某一页代码，返回本页不带图片的段子列表
     def getPageItems(self, pageIndex):
