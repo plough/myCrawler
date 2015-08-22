@@ -39,7 +39,7 @@ class QSBK:
         if not pageCode:
             print "页面加载失败..."
             return None
-        pattern = re.compile('<div.*?class="author.*?>.*?<a.*?</a>.*?<a.*?>(.*?)</a>.*?<div.*?class' +
+        pattern = re.compile('<div.*?class="author.*?>.*?<a.*?<img.*?>(.*?)</a>.*?<div.*?class' +
             '="content".*?>(.*?)</div>(.*?)<div class="stats.*?class="number">(.*?)</i>', re.S)
         items = re.findall(pattern, pageCode)
         #用来存储每页的段子们
