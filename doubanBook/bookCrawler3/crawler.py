@@ -12,6 +12,8 @@ from bs4 import BeautifulSoup
 import MySQLdb
 import time
 import os
+from multiprocessing.dummy import Pool as ThreadPool
+import random
 
 class BookCrawler:
     def __init__(self):
@@ -33,6 +35,9 @@ class BookCrawler:
             s.headers.update(header)
             self.sessions.append(s)
 
+        # 用于爬取网页前，随机获取一个session
+        self.randIndex = lambda : random.randint(0, len(self.sessions)-1)
+
         # 标签下的图书列表。用于一次性插入数据库。
         self.book_list = []
 
@@ -41,9 +46,12 @@ class BookCrawler:
         self.cur = self.conn.cursor()
         self.conn.select_db('douban_book')
 
+        # 线程池
+        self.pool = ThreadPool(9)
+
     def doCrawling(self):
         try:
-            self.getInfoWithTag(self.tag,14)
+            self.getInfoWithTag(self.tag)
         except Exception as e:
             print "出错：%s" % (e)
             exit(-1)
@@ -59,10 +67,16 @@ class BookCrawler:
         index = 0
         step = 15 # 每一跳的尺度（因为每页显示15本书）
         while index <= max_num:
+            print '*' * 80
+            print 'book index = %s' % index
+            print '*' * 80
+            # 为map函数（多线程）做准备
+            map_args = {'image_urls':[], 'image_names':[], 'book_urls':[]}
+
             time.sleep(5)
             url = 'http://www.douban.com/tag/%s/book?start=%d' % (tag, index)
             try:
-                source_code = self.sessions[0].get(url)
+                source_code = self.sessions[self.randIndex()].get(url)
                 plain_text = source_code.text
                 soup = BeautifulSoup(plain_text, 'lxml')
                 # 得到soup对象
@@ -75,18 +89,17 @@ class BookCrawler:
                 if len(book_info_list) == 0:
                     break
 
-                print 'len(book_info_list) =', len(book_info_list)
                 # 提取数据
                 for book_info in book_info_list:
-                    print 'book_info=%s' % book_info
                     book_table = {}
 
                     # 处理图片
                     image_url = book_info.dt.a.img.get('src').strip()
                     image_name = image_url.split('/')[-1]
                     book_table['image_name'] = image_name
-                    #book_table['image_url'] = image_url
-                    self.saveImage(image_url, image_name)
+                    map_args['image_urls'].append(image_url)
+                    map_args['image_names'].append(image_name)
+                    #self.saveImage(image_url, image_name)
 
                     desc_raw = book_info.find('div', {'class': 'desc'})
                     if desc_raw != None:
@@ -98,9 +111,10 @@ class BookCrawler:
                     book_table['title'] = title
                     book_url = title_raw.get('href')
 
-                    # 在书籍详情页面爬取图书剩余信息，并整合
-                    book_table_expand = self.crawlDetailInfo(book_url)
-                    book_table.update(book_table_expand.items())
+#                   # 在书籍详情页面爬取图书剩余信息，并整合
+#                   book_table_expand = self.crawlDetailInfo(book_url)
+#                   book_table.update(book_table_expand.items())
+                    map_args['book_urls'].append(book_url)
 
                     # 将一本书的信息暂存到book_list中
                     self.book_list.append(book_table)
@@ -111,28 +125,62 @@ class BookCrawler:
                 #time.sleep(30)
                 print type(e),e
                 time.sleep(1)
-#           # 15本书籍处理完之后，执行一次批量插入操作
-#           sql = "INSERT INTO Books (BookID, Tag, Title, Author, Publisher, Rating, Date)\
-#                   VALUES (%s, %s, %s, %s, %s, %s, %s)"
-
-#           self.cur.executemany(sql, self.book_list)
-            # 清空book_list
+           # 清空book_list
             #print self.book_list
-            print 'start writing...'
-            theindex = 1
+
+            ####################################### 多线程(map实现) ##############################
+            # 批量下载图片
+            print 'start saving images...'
+            print 'map_args[image_urls]=%s\nmap_args[image_names]=%s' \
+                    % (map_args['image_urls'], map_args['image_names'])
+            self.pool.map(self.saveImage_star, zip(map_args['image_urls'], map_args['image_names']))
+
+            # 批量处理书籍详情，将之与已经存储的信息合并
+            detail_infos = self.pool.map(self.crawlDetailInfo, map_args['book_urls'])
+            for i, book_table_expand in enumerate(detail_infos):
+                self.book_list[i].update(book_table_expand.items())
+            ###################################### 多线程结束 ####################################
+
+############################### 写入文件 ####################################
+#           print 'start writing...'
+#           theindex = 1
+#           for book_info in self.book_list:
+#               self.f_content += '%s -------------------\n' % theindex
+#               for key in book_info:
+#                   self.f_content += '%s : %s\n' % (key, book_info[key])
+#               self.f_content += '\n'
+#               theindex += 1
+#           with open('books.txt', 'w') as f:
+#               f.write(self.f_content)
+############################### 写入文件结束 ##################################
+
+            ################################ 写入数据库 ###################################
+            # 15本书籍处理完之后，执行一次批量插入操作
+            sql_raw = "INSERT INTO program_book %s VALUES %s"
+            # 构造格式化参数
+            #sql_args = []
             for book_info in self.book_list:
-                self.f_content += '%s -------------------\n' % theindex
+                # 每本书都要有一个单独的sql语句
+                key_list = []
+                val_list = []
                 for key in book_info:
-                    self.f_content += '%s : %s\n' % (key, book_info[key])
-                self.f_content += '\n'
-                theindex += 1
-            with open('books.txt', 'w') as f:
-                f.write(self.f_content)
+                    key_list.append(key)
+                    val_list.append(book_info[key])
+                s_key = '(' + ', '.join(key_list) + ')'
+                s_val = '(' + ', '.join( ('%s ' * len(val_list)).split() ) + ')'
+                sql = sql_raw % (s_key, s_val)
+                self.cur.execute(sql, val_list)
+                print '%s processed...' % book_info['title']
+            ################################ 写入数据库结束 ###############################
             self.book_list = []
 
     # 保存网络图片
+    def saveImage_star(self, args):
+        # 做一个中转。因为pool.map函数不支持多参数。
+        return self.saveImage(*args)
     def saveImage(self, image_url, image_name ="default.jpg"):
-        response = self.sessions[1].get(image_url, stream=True)
+        print 'saving...'
+        response = self.sessions[self.randIndex()].get(image_url, stream=True)
         image = response.content
         dist_dir = 'pics'
         try:
@@ -141,9 +189,11 @@ class BookCrawler:
         except IOError as e:
             print("IO Error: %s" % e)
 
+    # 爬取某本书籍的详细信息
     def crawlDetailInfo(self, book_url):
+        print 'crawling %s ...' % book_url
         book_table = {}
-        plain_text = self.sessions[1].get(book_url, timeout=10).content
+        plain_text = self.sessions[self.randIndex()].get(book_url).content
         soup = BeautifulSoup(plain_text, 'lxml')
 
         # 评分和评价人数
@@ -151,9 +201,9 @@ class BookCrawler:
         rating_raw = rating_soup.find('strong')
         votes_raw = rating_soup.find('span', {'property': 'v:votes'})
         if rating_raw != None:
-            book_table['rating'] = float(rating_raw.string.strip())
+            book_table['rating'] = rating_raw.string.strip()
         if votes_raw != None:
-            book_table['votes'] = int(votes_raw.string.strip())
+            book_table['votes'] = votes_raw.string.strip()
 
         # 内容简介
         intro_soups = soup.findAll('div', {'class': 'intro'})
