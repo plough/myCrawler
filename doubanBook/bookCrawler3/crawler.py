@@ -1,4 +1,6 @@
-#encoding: utf-8
+#!/usr/bin/env python
+# encoding: utf-8
+
 # 使用requests和BeautifulSoup模块，爬取豆瓣的图书信息。先爬标签，再爬每个标签下的书籍信息。
 # 用子线程来爬取图片信息和书籍详情
 
@@ -29,14 +31,8 @@ class BookCrawler:
                 {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:40.0) Gecko/20100101 Firefox/40.0'},
                 {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/44.0.2403.89 Chrome/44.0.2403.89 Safari/537.36'}
                 ]
-        self.sessions = []
-        for header in self.headers:
-            s = requests.Session()
-            s.headers.update(header)
-            self.sessions.append(s)
-
-        # 用于爬取网页前，随机获取一个session
-        self.randIndex = lambda : random.randint(0, len(self.sessions)-1)
+        # 用于爬取网页前，随机获取一个header
+        self.randHeaders = lambda : self.headers[random.randint(0, len(self.headers)-1)]
 
         # 标签下的图书列表。用于一次性插入数据库。
         self.book_list = []
@@ -76,7 +72,7 @@ class BookCrawler:
             time.sleep(5)
             url = 'http://www.douban.com/tag/%s/book?start=%d' % (tag, index)
             try:
-                source_code = self.sessions[self.randIndex()].get(url)
+                source_code = requests.get(url, headers=self.headers[self.randIndex()])
                 plain_text = source_code.text
                 soup = BeautifulSoup(plain_text, 'lxml')
                 # 得到soup对象
@@ -111,9 +107,6 @@ class BookCrawler:
                     book_table['title'] = title
                     book_url = title_raw.get('href')
 
-#                   # 在书籍详情页面爬取图书剩余信息，并整合
-#                   book_table_expand = self.crawlDetailInfo(book_url)
-#                   book_table.update(book_table_expand.items())
                     map_args['book_urls'].append(book_url)
 
                     # 将一本书的信息暂存到book_list中
@@ -180,21 +173,30 @@ class BookCrawler:
         return self.saveImage(*args)
     def saveImage(self, image_url, image_name ="default.jpg"):
         print 'saving...'
-        response = self.sessions[self.randIndex()].get(image_url, stream=True)
-        image = response.content
-        dist_dir = 'pics'
         try:
+            response = requests.get(image_url, stream=True, headers=self.randHeaders())
+            image = response.content
+            dist_dir = 'pics'
             with open(os.path.join(dist_dir, image_name),'wb') as jpg:
                 jpg.write(image)
-        except IOError as e:
-            print("IO Error: %s" % e)
+        except requests.exceptions.ConnectionError:
+            time.sleep(20)
+            return self.saveImage(image_url, image_name)
+        except Exception as e:
+            print type(e), e
 
     # 爬取某本书籍的详细信息
     def crawlDetailInfo(self, book_url):
         print 'crawling %s ...' % book_url
-        book_table = {}
-        plain_text = self.sessions[self.randIndex()].get(book_url).content
-        soup = BeautifulSoup(plain_text, 'lxml')
+        try:
+            book_table = {}
+            plain_text = requests.get(book_url, headers=self.randHeaders()).content
+            soup = BeautifulSoup(plain_text, 'lxml')
+        except requests.exceptions.ConnectionError:
+            time.sleep(20)
+            return self.crawlDetailInfo(book_url)
+        except Exception as e:
+            print type(e), e
 
         # 评分和评价人数
         rating_soup = soup.find('div', {'class': 'rating_wrap'})
