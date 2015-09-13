@@ -47,7 +47,7 @@ class BookCrawler:
 
     def doCrawling(self):
         try:
-            self.getInfoWithTag(self.tag)
+            self.getInfoWithTag(self.tag, max_num = 5000)
         except Exception as e:
             print "出错：%s" % (e)
             exit(-1)
@@ -60,7 +60,7 @@ class BookCrawler:
 
     '''获取某个标签下的书籍信息。参数tag为标签名，参数max_num为爬取的书籍数量。'''
     def getInfoWithTag(self,tag,max_num = 5000):
-        index = 0
+        index = 420
         step = 15 # 每一跳的尺度（因为每页显示15本书）
         while index <= max_num:
             print '*' * 80
@@ -72,7 +72,7 @@ class BookCrawler:
             time.sleep(5)
             url = 'http://www.douban.com/tag/%s/book?start=%d' % (tag, index)
             try:
-                source_code = requests.get(url, headers=self.headers[self.randIndex()])
+                source_code = requests.get(url, headers=self.randHeaders())
                 plain_text = source_code.text
                 soup = BeautifulSoup(plain_text, 'lxml')
                 # 得到soup对象
@@ -192,87 +192,91 @@ class BookCrawler:
             book_table = {}
             plain_text = requests.get(book_url, headers=self.randHeaders()).content
             soup = BeautifulSoup(plain_text, 'lxml')
+
+            # 评分和评价人数
+            rating_soup = soup.find('div', {'class': 'rating_wrap'})
+            rating_raw = rating_soup.find('strong')
+            votes_raw = rating_soup.find('span', {'property': 'v:votes'})
+            if rating_raw != None:
+                book_table['rating'] = rating_raw.string.strip()
+            if votes_raw != None:
+                book_table['votes'] = votes_raw.string.strip()
+
+            # 内容简介
+            intro_soups = soup.findAll('div', {'class': 'intro'})
+            if len(intro_soups) > 0:
+                intro = '\t'
+                intro_index = 0
+                while intro_index < len(intro_soups) \
+                        and (intro == '\t' or intro.endswith('(展开全部)')):
+                    intro = '\t'
+                    paragraphs = []
+                    intro_soup = intro_soups[intro_index]
+                    for p in intro_soup.findAll('p'):
+                        if p.string != None:
+                            paragraphs.append(p.string.strip())
+                    intro += '\n\t'.join(paragraphs)
+                    intro_index += 1
+                if intro != '\t':
+                    book_table['introduction'] = intro
+
+            # 书籍其他信息
+            info_soup = soup.find('div', {'id': 'info'})
+            info_list = info_soup.findAll('span', {'class': 'pl'})
+            for info in info_list:
+                info_s = info.string.strip()
+                if info_s.startswith('作者'):
+                    author_list = []
+                    authors_raw = info.parent.findAll('a')
+                    for author_raw in authors_raw:
+                        author_list.append(author_raw.string.strip())
+                    book_table['author'] = ','.join(author_list)
+                    continue
+                if info_s.startswith('译者'):
+                    trans_list = []
+                    trans_raw = info.parent.findAll('a')
+                    for trans in trans_raw:
+                        trans_list.append(trans.string.strip())
+                    book_table['translator'] = ','.join(trans_list)
+                    continue
+                if info_s.startswith('出版社'):
+                    book_table['publisher'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('副标题'):
+                    book_table['subtitle'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('原作名'):
+                    book_table['origin'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('出版年'):
+                    date_l = info.next_sibling.string.strip().split('-')
+                    # 保证日期由“年-月-日”组成，不够用0补足
+                    while len(date_l) < 3:
+                        date_l.append('0')
+                    book_table['publish_date'] = '-'.join(date_l)
+                    continue
+                if info_s.startswith('页数'):
+                    book_table['page_number'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('定价'):
+                    book_table['price'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('装帧'):
+                    book_table['binding_type'] = info.next_sibling.string.strip()
+                    continue
+                if info_s.startswith('丛书'):
+                    book_table['series'] = info.parent.findAll('a')[-1].string.strip()
+                    continue
+                if info_s.startswith('ISBN'):
+                    book_table['ISBN'] = info.next_sibling.string.strip()
+            return book_table
+
         except requests.exceptions.ConnectionError:
             time.sleep(20)
             return self.crawlDetailInfo(book_url)
         except Exception as e:
+            print 'Error in %s:' % book_url,
             print type(e), e
-
-        # 评分和评价人数
-        rating_soup = soup.find('div', {'class': 'rating_wrap'})
-        rating_raw = rating_soup.find('strong')
-        votes_raw = rating_soup.find('span', {'property': 'v:votes'})
-        if rating_raw != None:
-            book_table['rating'] = rating_raw.string.strip()
-        if votes_raw != None:
-            book_table['votes'] = votes_raw.string.strip()
-
-        # 内容简介
-        intro_soups = soup.findAll('div', {'class': 'intro'})
-        if len(intro_soups) > 0:
-            intro = '\t'
-            intro_index = 0
-            while intro == '\t' or intro.endswith('(展开全部)'):
-                intro = '\t'
-                paragraphs = []
-                intro_soup = intro_soups[intro_index]
-                for p in intro_soup.findAll('p'):
-                    if p.string != None:
-                        paragraphs.append(p.string.strip())
-                intro += '\n\t'.join(paragraphs)
-                intro_index += 1
-            book_table['introduction'] = intro
-
-        # 书籍其他信息
-        info_soup = soup.find('div', {'id': 'info'})
-        info_list = info_soup.findAll('span', {'class': 'pl'})
-        for info in info_list:
-            info_s = info.string.strip()
-            if info_s.startswith('作者'):
-                author_list = []
-                authors_raw = info.parent.findAll('a')
-                for author_raw in authors_raw:
-                    author_list.append(author_raw.string.strip())
-                book_table['author'] = ','.join(author_list)
-                continue
-            if info_s.startswith('译者'):
-                trans_list = []
-                trans_raw = info.parent.findAll('a')
-                for trans in trans_raw:
-                    trans_list.append(trans.string.strip())
-                book_table['translator'] = ','.join(trans_list)
-                continue
-            if info_s.startswith('出版社'):
-                book_table['publisher'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('副标题'):
-                book_table['subtitle'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('原作名'):
-                book_table['origin'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('出版年'):
-                date_l = info.next_sibling.string.strip().split('-')
-                # 保证日期由“年-月-日”组成，不够用0补足
-                while len(date_l) < 3:
-                    date_l.append('0')
-                book_table['publish_date'] = '-'.join(date_l)
-                continue
-            if info_s.startswith('页数'):
-                book_table['page_number'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('定价'):
-                book_table['price'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('装帧'):
-                book_table['binding_type'] = info.next_sibling.string.strip()
-                continue
-            if info_s.startswith('丛书'):
-                book_table['series'] = info.parent.findAll('a')[-1].string.strip()
-                continue
-            if info_s.startswith('ISBN'):
-                book_table['ISBN'] = info.next_sibling.string.strip()
-        return book_table
 
 
 if __name__ == '__main__':
@@ -282,7 +286,7 @@ if __name__ == '__main__':
     #crawler.saveImage('http://img3.douban.com/lpic/s11314802.jpg', 's11314802.jpg')
     #url = 'http://book.douban.com/subject/11541213/?from=tag_all'
     #url = 'http://book.douban.com/subject/10546125/?from=tag_all'
-#   url = 'http://book.douban.com/subject/1230413/?from=tag_all'
+#   url = 'http://book.douban.com/subject/1141154/?from=tag_all'
 #   book_table = crawler.crawlDetailInfo(url)
 #   print book_table['introduction']
 #   for key in book_table:
