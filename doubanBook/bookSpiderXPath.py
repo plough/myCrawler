@@ -19,6 +19,7 @@ headers = [
     {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/44.0.2403.89 Chrome/44.0.2403.89 Safari/537.36'}
 ]
 
+
 def main():
     tags = ['哲学', '计算机', '心理学', '生活', '数学']
 
