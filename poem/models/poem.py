@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import requests
 import re
 from bs4 import BeautifulSoup
+
+import sys
+sys.path.append('..')
+from utils import http_util as http
 
 
 class Poem:
@@ -26,10 +29,10 @@ class Poem:
 
     def fetch(self):
         assert len(self.url) > 0
-        res = requests.get(self.url)
+        res = http.get(self.url)
         if res.status_code == 200:
             txt = re.sub(r'</*br/*>', '\n', res.text)
-            txt = re.sub(r'<span.*?modern-line-span.*?>', '\n', txt)
+            txt = re.sub(r'<span[^>]*?modern-line-span[^<]*?>', '\n', txt)
             soup = BeautifulSoup(txt, 'lxml')
             try:
                 target = soup.find('div', 'poem-detail-main-text')

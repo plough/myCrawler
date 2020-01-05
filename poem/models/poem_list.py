@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from models.poem import Poem
 from models.author import Author
-import requests
 import json
 import math
 import time
@@ -15,6 +14,7 @@ import os
 import sys
 sys.path.append('..')
 from config import HOST, THREAD_NUM, THREAD_POOL_SIZE, OUTPUT_DIR, ONLY_ROWS
+from utils import http_util as http
 
 thread_pool = ThreadPoolExecutor(THREAD_POOL_SIZE)
 
@@ -58,7 +58,7 @@ class PoemList:
         start_url = '{}/hanyu/ajax/search_list?wd={}'.format(
             HOST, self.search_key)
         print('view page:', 0)
-        res = requests.get(start_url)
+        res = http.get(start_url)
         if res.status_code == 200:
             r = json.loads(res.text)
             self._before_collect_poems()
@@ -67,7 +67,7 @@ class PoemList:
             for i in range(1, total_page):
                 print('view page:', i)
                 page_url = '{}&pn={}'.format(start_url, i+1)
-                res = requests.get(page_url)
+                res = http.get(page_url)
                 if res.status_code == 200:
                     r = json.loads(res.text)
                     self._collect_poems(r, i == total_page-1)
