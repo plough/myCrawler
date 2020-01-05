@@ -15,3 +15,5 @@ OUTPUT_DIR = './output'
 HOST = 'https://hanyu.baidu.com'
 THREAD_POOL_SIZE = 8
 THREAD_NUM = 8
+# 生成的结果文件中，只包含一条条的json对象，最外层不用中括号包裹，数据之间也没有逗号。
+ONLY_ROWS = False

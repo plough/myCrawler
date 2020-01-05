@@ -29,6 +29,7 @@ class Poem:
         res = requests.get(self.url)
         if res.status_code == 200:
             txt = re.sub(r'</*br/*>', '\n', res.text)
+            txt = re.sub(r'<span.*?modern-line-span.*?>', '\n', txt)
             soup = BeautifulSoup(txt, 'lxml')
             try:
                 target = soup.find('div', 'poem-detail-main-text')

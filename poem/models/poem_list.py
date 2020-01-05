@@ -14,7 +14,7 @@ import os
 
 import sys
 sys.path.append('..')
-from config import HOST, THREAD_NUM, THREAD_POOL_SIZE, OUTPUT_DIR
+from config import HOST, THREAD_NUM, THREAD_POOL_SIZE, OUTPUT_DIR, ONLY_ROWS
 
 thread_pool = ThreadPoolExecutor(THREAD_POOL_SIZE)
 
@@ -27,6 +27,8 @@ class PoemList:
         self.output_file = os.path.join(OUTPUT_DIR, search_key + '.json')
         if not os.path.exists(OUTPUT_DIR):
             os.makedirs(OUTPUT_DIR)
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
 
     def __str__(self):
         res = 'key: {}\n'.format(self.search_key)
@@ -91,10 +93,14 @@ class PoemList:
         self.author = author
 
     def _before_collect_poems(self):
+        if ONLY_ROWS:
+            return
         with open(self.output_file, 'w') as f:
             f.write('[')
 
     def _after_collect_poems(self):
+        if ONLY_ROWS:
+            return
         with open(self.output_file, 'a') as f:
             f.write('\n]')
 
@@ -124,6 +130,8 @@ class PoemList:
             while len(self.poem_list) > 0:
                 poem = self.poem_list.pop()
                 f.write(json.dumps(poem.__dict__, indent=2))
+                if ONLY_ROWS:
+                    continue
                 if (not last_page) or len(self.poem_list) > 0:
                     f.write(',')
 
